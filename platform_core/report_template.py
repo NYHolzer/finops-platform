@@ -1,19 +1,23 @@
-# platform_core/template.py
+from datetime import datetime, timezone
 from pathlib import Path
-from datetime import datetime
-from typing import Iterable
+from typing import Iterable, Union
+
 
 def render_page(
     module_slug: str,
     page_title: str,
     body_html: str,
     nav_modules: Iterable[str] = ("analyst", "trader"),
+    base_path: Union[str, Path] = ".",  # <-- new: where to write output
 ) -> None:
     """
-    Writes a complete HTML page to <module>/docs/index.html.
+    Writes a complete HTML page to <base_path>/<module_slug>/docs/index.html.
     Each module supplies only its unique `body_html`.
+
+    base_path: typically the repo root in production; in tests, pass a temp dir.
     """
-    out_dir = Path(module_slug) / "docs"
+    base_path = Path(base_path)
+    out_dir = base_path / module_slug / "docs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     nav_links = " | ".join(
@@ -52,7 +56,7 @@ def render_page(
   </main>
 
   <footer>
-    <p style="margin-top:1rem;">Last updated: {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}</p>
+    <p style="margin-top:1rem;">Last updated: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}</p>
   </footer>
 </body>
 </html>"""
