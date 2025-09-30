@@ -1,0 +1,32 @@
+name: publish-modules
+
+on:
+    workflow_dispatch: {}
+
+permissions:
+    contents: write
+
+jobs:
+    build-publish:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                module: [analyst, trader] # ← add "budget" later, etc.
+        steps:
+            - uses: actions/checkout@v4
+
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Build & stage ${{ matrix.module }}
+              run: |
+                  python -m platform_core.publish ${{ matrix.module }}
+
+            - name: Commit site changes for ${{ matrix.module }}
+              run: |
+                  git config user.name "github-actions"
+                  git config user.email "actions@users.noreply.github.com"
+                  git add docs/${{ matrix.module }}
+                  git commit -m "publish: ${{ matrix.module }} updated" || echo "no changes"
+                  git push
