@@ -1,0 +1,45 @@
+# Name shown in the Actions tab
+name: analyst-manual
+
+# Triggers: only runs when you click "Run workflow"
+on:
+  workflow_dispatch: {}
+
+# Give this job permission to push back to the repo
+permissions:
+  contents: write
+
+jobs:
+  build_publish_analyst:
+    runs-on: ubuntu-latest   # GitHub gives us a fresh Linux machine
+    steps:
+      # Step 1: pull the repo code onto the runner
+      - uses: actions/checkout@v4
+
+      # Step 2: install Python (so we can run our report.py script)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Step 3: run the analyst/report.py function inline
+      - name: Run analyst report
+        run: |
+          python - << 'PY'
+          from analyst.report import render_report
+          render_report()
+          PY
+
+      # Step 4: copy the generated HTML into the root /docs folder (which Pages serves)
+      - name: Publish analyst docs into root /docs
+        run: |
+          mkdir -p docs/analyst
+          cp -r analyst/docs/* docs/analyst/ || true
+
+      # Step 5: commit and push those new HTML files back to the repo
+      - name: Commit site changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/analyst
+          git commit -m "analyst: manual site update" || echo "no changes"
+          git push
