@@ -10,6 +10,7 @@ import re
 from typing import Dict, Optional, TypedDict
 
 import requests
+from platform_core.config import SEC_USER_AGENT
 
 # === Constants & config ===
 SEC_BASE_URL = "https://data.sec.gov"
