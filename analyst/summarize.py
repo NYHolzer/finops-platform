@@ -4,6 +4,9 @@ from re
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 
+# TfidfVectorizer converts text into numerical importance scores
+
+# We use regex to split the text into sentences which then make each setences its own document for scoring.
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 def top_sentences_tfidf(text: str, k: int = 3) -> List[str]:
