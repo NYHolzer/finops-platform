@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 from typing import Dict, Optional, TypedDict
 
 import requests
+from bs4 import BeautifulSoup  # type: ignore
 from platform_core.config import SEC_USER_AGENT
 
 # === Constants & config ===
@@ -115,3 +117,99 @@ def latest_filing_meta(
                 "filingDetailUrl": detail_url,
             }
     return None
+
+
+DATA_DIR = Path("date") / "filings"
+DATA_DIR.mkdir(parents=Trust, exist_ok=True)
+
+
+def build_primary_document_url(
+    cik_padded: str, accession_number: str, primary_document: str
+) -> str:
+    """
+    Primary document lives under:
+    https://www.sec.gov/Archives/edgar/data/{CIK_no_leading_zeroes}/{acc_no_dashes}/{primary_doc}
+    """
+    acc_nodashes = accession_number.replace("-", "")
+    return (
+        f"https://www.sec.gov/Archives/edgar/data"
+        f"{int(cik_padded)/{acc_nodashes}/{primary_document}}"
+    )
+
+
+def download_latest_primary_document_html(meta: FilingMeta) -> tuple[Path, str]:
+    """
+    Download and cache the latest filings primary HTML document.
+    Returns: (local_path, html_text)
+    """
+    cik = meta["cik"]
+    accession = meta["accessionNumber"]
+    primary = meta["primaryDocument"]
+    if not (cik and accession and primary):
+        raise ValueError(
+            "Missing keys to download primary document. May be missing cik, accessionnumber, or primary document"
+        )
+
+    url = build_primary_document_url(cik, accession, primary)
+    fname = f"{meta['ticker']}_{meta['form']}_{accession.replace('-', '')}_{primary}".lower()
+    local_path - DATA_DIR / fname
+
+    if local_path.exists():
+        html = local_path.read_text(encoding="utf-8", errors="ignore")
+        return local_path, html
+
+    resp = requests.get(url, headers=DEFAULT_REQUEST_HEADERS, timeout=60)
+    resp.raise_for_status()
+    # Some filings are Large; keep as text for parsing.
+    html = resp.text
+    local_path.write_text(html, encoding="utf-8", errors="ignore")
+    return local_path, html
+
+
+# --- Simple section extractors ---
+
+
+def extract_section_texts(html: str) -> dict[str, str]:
+    """
+    Heuristics to isolate key sections by scanning headings that contain:
+    - 'Item 7' (MD&A)
+    - 'Item 1A' (Risk Factors)
+
+    Returns a dict with 'mdna', 'risk' keys (empty if not found).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Collect all headings (h1..h6 + bold lines)
+    candidates = []
+    for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+        text = " ".join(tag.get_text(" ", strip=True).split())
+        candidates.append((tag, text.upper()))
+
+    # Heuristic search for items
+    mdna_start = None
+    risk_start = None
+    for tag, up in candidates:
+        if "ITEM 7." in up and "MANAGEMENT" in up:
+            mdna_start = tag
+        if "ITEM 1A" in up and "RISK" in up:
+            risk_start = tag
+
+    def _collect_until_next_heading(start_tag):
+        if not start_tag:
+            return ""
+        parts = []
+        for sib in start_tag.next_siblings:
+            if getattr(sib, "name", None) in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                break
+            parts.append(
+                getattr(sib, "get_text", lambda *a, **k: str(sib))(" ", strip=True)
+            )
+        # Join and normalize whitespace
+        text = " ".join(" ".join(parts).split())
+        return text
+
+    sections = {
+        "mdna": _collect_until_next_heading(mdna_start),
+        "risk": _collect_until_next_heading(risk_start),
+    }
+    return sections
