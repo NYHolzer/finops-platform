@@ -120,7 +120,7 @@ def latest_filing_meta(
 
 
 DATA_DIR = Path("date") / "filings"
-DATA_DIR.mkdir(parents=Trust, exist_ok=True)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def build_primary_document_url(
