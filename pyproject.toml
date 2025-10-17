@@ -1,18 +1,19 @@
 [build-system]
-requires = ["setuptools>=69","wheel"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "finops-platform"
 version = "0.2.2"
-description = "FinOps Platform - Analyst module and shared tooling"
+description = "FinOps Platform — Analyst module and shared tooling"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Nissan Holzer" }]
-dependencies = []
 
-[tools.setuptools]
-packages = ["analyst","platform_core"] # simple explicit packages for now
+# keep runtime deps in requirements.txt for now
+
+[tool.setuptools]
+packages = ["analyst", "platform_core"]  # ← explicit, no auto-discovery
 
 [project.scripts]
 finops = "cli:main"
