@@ -14,6 +14,7 @@ authors = [{ name = "Nissan Holzer" }]
 
 [tool.setuptools]
 packages = ["analyst", "platform_core"]  # ← explicit, no auto-discovery
+py-modules = ["cli"]
 
 [project.scripts]
 finops = "cli:main"
