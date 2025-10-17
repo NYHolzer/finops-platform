@@ -60,4 +60,7 @@ def render_page(
   </footer>
 </body>
 </html>"""
-    (out_dir / "index.html").write_text(html, encoding="utf-8")
+
+    out_path = out_dir / "index.html"
+    out_path.write_text(html, encoding="utf-8")
+    return out_path

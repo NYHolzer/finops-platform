@@ -1,4 +1,8 @@
 # analyst/report.py
+from __future__ import annotations
+
+from pathlib import Path
+
 from analyst.edgar import (
     download_latest_primary_document_html,
     extract_section_texts,
@@ -10,15 +14,15 @@ from platform_core.report_template import render_page
 DEFAULT_TICKER = "AAPL"
 
 
-def render_report(ticker: str = DEFAULT_TICKER):
+def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
     meta = latest_filing_meta(ticker)
     if not meta:
         body = f"""
           <h2>Analyst Module</h2>
           <p>Could not find SEC filings for <strong>{ticker.upper()}</strong>.</p>
         """
-        render_page("analyst", f"Analyst Report · {ticker.upper()}", body)
-        return
+        # RETURN the path we wrote
+        return render_page("analyst", f"Analyst Report · {ticker.upper()}", body)
 
     # Download & cache the primary document HTML
     local_path, html = download_latest_primary_document_html(meta)
@@ -58,4 +62,5 @@ def render_report(ticker: str = DEFAULT_TICKER):
         <p>Saved primary document: <code>{local_path.as_posix()}</code></p>
       </details>
     """
-    render_page("analyst", f"Analyst Report · {ticker.upper()}", body)
+    # IMPORTANT: RETURN the path that render_page writes
+    return render_page("analyst", f"Analyst Report · {ticker.upper()}", body)
