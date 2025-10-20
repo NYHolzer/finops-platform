@@ -15,6 +15,7 @@ DEFAULT_TICKER = "AAPL"
 
 
 def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
+    print(f"[analyst] Fetching data for {ticker}…")
     meta = latest_filing_meta(ticker)
     if not meta:
         body = f"""
@@ -25,9 +26,12 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
         return render_page("analyst", f"Analyst Report · {ticker.upper()}", body)
 
     # Download & cache the primary document HTML
+    print(f"[analyst] Downloading primary document…")
     local_path, html = download_latest_primary_document_html(meta)
+    print(f"[analyst] Extracting sections…")
     sections = extract_section_texts(html)
 
+    print(f"[analyst] Summarizing…")
     mdna = sections.get("mdna", "")
     risk = sections.get("risk", "")
 
@@ -63,4 +67,6 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
       </details>
     """
     # IMPORTANT: RETURN the path that render_page writes
+    print(f"[analyst] Rendering HTML page…")
     return render_page("analyst", f"Analyst Report · {ticker.upper()}", body)
+    print(f"[analyst] Report written successfully.")
