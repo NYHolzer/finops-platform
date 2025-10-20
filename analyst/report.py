@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 from analyst.edgar import (
     download_latest_primary_document_html,
     extract_section_texts,
@@ -45,6 +46,38 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
             return "<em>No highlights found.</em>"
         return "<ul>" + "".join(f"<li>{s}</li>" for s in items) + "</ul>"
 
+    # --- Key metric: Current Ratio (alias-aware) ---
+    metrics_html = "<em>No balance-sheet data available.</em>"
+    try:
+        df_bs = load_balance_sheet(meta["cik"], freq="annual")
+        if not df_bs.empty:
+            cr_df = current_ratio(df_bs)
+            latest_period = cr_df.index.max()
+            latest_cr = cr_df.loc[latest_period, "CurrentRatio"]
+
+            if not pd.isna(latest_cr):
+                note = (
+                    "Liquidity: ~1.0–2.0 is common; <1.0 can signal short-term stress; "
+                    ">2.0 may imply idle working capital."
+                )
+                metrics_html = f"""
+                <table>
+                  <thead><tr><th>Metric</th><th>Latest</th><th>As of</th><th>What it tells us</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Current Ratio</strong></td>
+                      <td>{float(latest_cr):.2f}</td>
+                      <td>{pd.to_datetime(latest_period).date()}</td>
+                      <td>{note}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                """
+    except Exception:
+        metrics_html = (
+            "<em>Metrics unavailable (failed to load balance-sheet data).</em>"
+        )
+
     body = f"""
       <h2>Analyst · {meta['ticker']}</h2>
       <div class="kpi">
@@ -71,35 +104,6 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
         <p>Saved primary document: <code>{local_path.as_posix()}</code></p>
       </details>
     """
-# --- Key metric: Current Ratio (alias-aware) ---
-  metrics_html = "<em>No balance-sheet data available.</em>"
-  try:
-      df_bs = load_balance_sheet(meta["cik"], freq="annual")
-      if not df_bs.empty:
-          cr_df = current_ratio(df_bs)
-          # pick the latest period
-          latest_period = cr_df.index.max()
-          latest_cr = cr_df.loc[latest_period, "CurrentRatio"]
-          if not pd.isna(latest_cr):
-              # simple interpretation
-              note = (
-                  "Liquidity: ~1.0–2.0 is common; <1.0 can signal short-term stress; >2.0 may imply idle working capital."
-              )
-              metrics_html = f"""
-              <table>
-                <thead><tr><th>Metric</th><th>Latest</th><th>As of</th><th>What it tells us</th></tr></thead>
-                <tbody>
-                  <tr>
-                    <td><strong>Current Ratio</strong></td>
-                    <td>{latest_cr:.2f}</td>
-                    <td>{pd.to_datetime(latest_period).date()}</td>
-                    <td>{note}</td>
-                  </tr>
-                </tbody>
-              </table>
-              """
-    except Exception:
-      metrics_html = "<em>Metrics unavailable (failed to load balance-sheet data).</em>"
 
     # IMPORTANT: RETURN the path that render_page writes
     print(f"[analyst] Rendering HTML page…")
