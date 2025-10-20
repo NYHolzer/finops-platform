@@ -13,6 +13,39 @@ from typing import Dict
 
 import pandas as pd
 
+# --- Catalog scaffold (so we can group & explain later) ---
+METRIC_CATEGORIES = {
+    "profitability": "How efficiently the business generates profits.",
+    "liquidity": "Ability to meet short-term obligations.",
+    "leverage": "How much debt/financial risk the firm takes on.",
+    "efficiency": "How well resources are used (turnover, cycles).",
+    "cashflow_quality": "Earnings vs. cash conversion and sustainability.",
+}
+
+METRICS_CATALOG: Dict[str, Dict[str, str]] = {
+    "ROE": {
+        "category": "profitability",
+        "label": "Return on Equity (ROE)",
+        "formula": "NetIncome / Stockholders' Equity",
+        "what_it_tells_us": "How effectively equity capital is turned into profit.",
+    }
+}
+
+NET_INCOME_ALIASES = [
+    "NetIncomeLoss",  # US-GAAP, very common
+    "ProfitLoss",  # IFRS/common alternative
+    "NetIncomeLossAvailableToCommonStockholdersBasic",  # sometimes used
+]
+
+# Equity (with/without noncontrolling interest; US-GAAP & variants):
+EQUITY_ALIASES = [
+    "StockholdersEquity",  # US-GAAP canonical
+    "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    "PartnersCapital",  # partnerships/LLC
+    "MemberEquity",  # alt naming
+    "Equity",  # some IFRS filers
+]
+
 
 def current_ratio(bs: pd.DataFrame) -> pd.DataFrame:
     """
@@ -48,52 +81,25 @@ def current_ratio(bs: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# --- Catalog scaffold (so we can group & explain later) ---
-METRIC_CATEGORIES = {
-    "profitability": "How efficiently the business generates profits.",
-    "liquidity": "Ability to meet short-term obligations.",
-    "leverage": "How much debt/financial risk the firm takes on.",
-    "efficiency": "How well resources are used (turnover, cycles).",
-    "cashflow_quality": "Earnings vs. cash conversion and sustainability.",
-}
-
-METRICS_CATALOG: Dict[str, Dict[str, str]] = {
-    "ROE": {
-        "category": "profitability",
-        "label": "Return on Equity (ROE)",
-        "formula": "NetIncome / Stockholders' Equity",
-        "what_it_tells_us": "How effectively equity capital is turned into profit.",
-    }
-}
+def _first_available(df: pd.DataFrame, names: list[str]) -> pd.Series:
+    """
+    Return the first Series present in df matching any of `names`.
+    If none exist, return a NaN Series aligned to df.index.
+    """
+    for n in names:
+        if n in df.columns:
+            return df[n]
+    return pd.Series(index=df.index, dtype="float64")
 
 
 def return_on_equity(df: pd.DataFrame) -> pd.DataFrame:
     """
-    ROE = NetIncome / Stockholders' Equity
-    Uses the wide DataFrame (index: period_end). Gracefully returns NaN if inputs missing.
-
-    We look for common income keys:
-      - 'NetIncomeLoss' (preferred, US-GAAP)
-      - 'ProfitLoss' (fallback some filers use)
-    Equity: 'StockholdersEquity'
+    ROE = NetIncome / Equity (gracefully handles naming differences via aliases).
     """
-    ni = None
-    for cand in ("NetIncomeLoss", "ProfitLoss"):
-        if cand in df.columns:
-            ni = df[cand]
-            break
-    if ni is None:
-        ni = pd.Series(index=df.index, dtype="float64")
-
-    equity = (
-        df["StockholdersEquity"]
-        if "StockholdersEquity" in df.columns
-        else pd.Series(index=df.index, dtype="float64")
-    )
-
-    roe = ni / equity
-    out = pd.DataFrame({"ROE": roe}, index=df.index).sort_index()
-    return out
+    ni = _first_available(df, NET_INCOME_ALIASES)
+    eq = _first_available(df, EQUITY_ALIASES)
+    roe = ni / eq
+    return pd.DataFrame({"ROE": roe}, index=df.index).sort_index()
 
 
 def explain_roe(latest_value: float) -> str:
