@@ -45,40 +45,27 @@ EQUITY_ALIASES = [
     "MemberEquity",  # alt naming
     "Equity",  # some IFRS filers
 ]
+# Current assets / liabilities aliases (US-GAAP + common variants)
+ASSETS_CURRENT_ALIASES = [
+    "AssetsCurrent",
+    "CurrentAssets",
+]
+
+LIABILITIES_CURRENT_ALIASES = [
+    "LiabilitiesCurrent",
+    "CurrentLiabilities",
+]
 
 
 def current_ratio(bs: pd.DataFrame) -> pd.DataFrame:
     """
-    Compute Current Ratio = AssetsCurrent / LiabilitiesCurrent.
-
-    Parameters
-    -----------
-    bs : pd.Dataframe
-        Wide balance-sheet table (index = period_end, columns include 'AssetsCurrent' and 'LiabilitiesCurrent' if the company reported them).
-
-    Returns
-    -----------
-        pd.DataFrame
-        Index: same as bs (period_end)
-        Columns: ['CurrentRatio']
-        Values: float (NaN where inputs are missing)
+    Current Ratio = Current Assets / Current Liabilities
+    Alias-aware to handle XBRL naming differences.
     """
-    # Gracefully handle missing columns: .get returns a Series of Nan if column absent
-    a_cur = (
-        bs["AssetsCurrent"]
-        if "AssetsCurrent" in bs.columns
-        else pd.Series(index=bs.index, dtype="float64")
-    )
-    l_cur = (
-        bs["LiabilitiesCurrent"]
-        if "LiabilitiesCurrent" in bs.columns
-        else pd.Series(index=bs.index, dtype="float64")
-    )
-
+    a_cur = _first_available(bs, ASSETS_CURRENT_ALIASES)
+    l_cur = _first_available(bs, LIABILITIES_CURRENT_ALIASES)
     cr = a_cur / l_cur
-
-    out = pd.DataFrame({"CurrentRatio": cr}, index=bs.index).sort_index()
-    return out
+    return pd.DataFrame({"CurrentRatio": cr}, index=bs.index).sort_index()
 
 
 def _first_available(df: pd.DataFrame, names: list[str]) -> pd.Series:
