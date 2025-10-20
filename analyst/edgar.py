@@ -245,41 +245,46 @@ def download_latest_primary_document_html(meta: FilingMeta) -> tuple[Path, str]:
 # --- Simple section extractors ---
 def extract_section_texts(html: str) -> dict[str, str]:
     """
-    Heuristics to isolate key sections by scanning headings that contain:
-    - 'Item 7' (MD&A)
-    - 'Item 1A' (Risk Factors)
-
-    Returns a dict with 'mdna', 'risk' keys (empty strings if not found).
+    Extract MD&A and Risk Factors by scanning the plain text for common SEC headings:
+      - MD&A: Item 7 (10-K) or Item 2 (10-Q)
+      - Risk: Item 1A
+    We slice from the matched heading to the next 'ITEM <number>' heading.
+    Returns: {'mdna': str, 'risk': str}
     """
     soup = BeautifulSoup(html, "html.parser")
 
-    # Collect all headings (h1..h6)
-    candidates = []
-    for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
-        text = " ".join(tag.get_text(" ", strip=True).split())
-        candidates.append((tag, text.upper()))
+    # Get plain text with light normalization
+    text = soup.get_text("\n", strip=True)
+    # Collapse excessive whitespace to make regex boundaries reliable
+    text = re.sub(r"[ \t\r\f\v]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n\n", text)
 
-    mdna_start = None
-    risk_start = None
-    for tag, up in candidates:
-        if "ITEM 7" in up and "MANAGEMENT" in up:
-            mdna_start = tag if mdna_start is None else mdna_start
-        if "ITEM 1A" in up and "RISK" in up:
-            risk_start = tag if risk_start is None else risk_start
+    # Patterns (case-insensitive)
+    mdna_pat = re.compile(
+        r"ITEM\s+(?:7|2)\.?\s+.*?MANAGEMENT.*?DISCUSSION.*?ANALYSIS",
+        re.IGNORECASE | re.DOTALL,
+    )
+    risk_pat = re.compile(
+        r"ITEM\s+1A\.?\s+.*?RISK",
+        re.IGNORECASE,
+    )
+    next_item_pat = re.compile(
+        r"\n\s*ITEM\s+\d+[A]?\.?",
+        re.IGNORECASE,
+    )
 
-    def _collect_until_next_heading(start_tag):
-        if not start_tag:
+    def _slice_section(start_match: re.Match | None) -> str:
+        """Slice from this heading to the next ITEM heading."""
+        if not start_match:
             return ""
-        parts = []
-        for sib in start_tag.next_siblings:
-            if getattr(sib, "name", None) in {"h1", "h2", "h3", "h4", "h5", "h6"}:
-                break
-            parts.append(
-                getattr(sib, "get_text", lambda *a, **k: str(sib))(" ", strip=True)
-            )
-        return " ".join(" ".join(parts).split())
+        start = start_match.start()
+        nxt = next_item_pat.search(text, pos=start_match.end())
+        end = nxt.start() if nxt else len(text)
+        section = text[start:end]
+        section = re.sub(r"\s+", " ", section).strip()
+        return section
 
-    return {
-        "mdna": _collect_until_next_heading(mdna_start),
-        "risk": _collect_until_next_heading(risk_start),
-    }
+    mdna_text = _slice_section(mdna_pat.search(text))
+    risk_text = _slice_section(risk_pat.search(text))
+
+    return {"mdna": mdna_text, "risk": risk_text}
