@@ -1,6 +1,7 @@
 # analyst/report.py
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +16,41 @@ from analyst.summarize import top_sentences_tfidf
 from platform_core.report_template import render_page
 
 DEFAULT_TICKER = "AAPL"
+
+import re
+
+
+def _prep_for_summary(text: str) -> str:
+    """Remove section headers/TOC noise so TF-IDF picks real sentences."""
+    if not text:
+        return ""
+    t = text
+
+    # Drop lines that are just 'ITEM 2.' / 'ITEM 7.' / 'ITEM 1A.' headings
+    t = re.sub(r"(?im)^\s*ITEM\s+\d+[A]?\.\s*.*$", "", t)
+
+    # Normalize whitespace and split to lines
+    lines = [ln.strip() for ln in re.sub(r"[ \t\r\f\v]+", " ", t).splitlines()]
+
+    keep: list[str] = []
+    for ln in lines:
+        if not ln:
+            continue
+        # Drop single numbers/page refs or bullets like "13", "(13)"
+        if re.fullmatch(r"\(?\d+\)?", ln):
+            continue
+        # Drop very short “title-y” lines (likely TOC/headers)
+        if len(ln.split()) < 6:
+            continue
+        # Drop obvious section titles
+        if re.match(r"(?i)^(risk factors|management.*analysis)$", ln):
+            continue
+        # Drop lines that start with "Item" again (safety)
+        if re.match(r"(?i)^item\s+\d", ln):
+            continue
+        keep.append(ln)
+
+    return " ".join(keep)
 
 
 def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
@@ -35,11 +71,18 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
     sections = extract_section_texts(html)
 
     print(f"[analyst] Summarizing…")
-    mdna = sections.get("mdna", "")
-    risk = sections.get("risk", "")
+    mdna = (sections.get("mdna", "") or "").strip()
+    risk = (sections.get("risk", "") or "").strip()
 
-    mdna_top = top_sentences_tfidf(mdna, k=3)
-    risk_top = top_sentences_tfidf(risk, k=3)
+    mdna_clean = _prep_for_summary(mdna)
+    risk_clean = _prep_for_summary(risk)
+
+    mdna_top = (
+        top_sentences_tfidf(mdna_clean, k=3) if len(mdna_clean.split()) >= 30 else []
+    )
+    risk_top = (
+        top_sentences_tfidf(risk_clean, k=3) if len(risk_clean.split()) >= 30 else []
+    )
 
     def _fmt_list(items):
         if not items:
