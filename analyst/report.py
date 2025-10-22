@@ -55,11 +55,19 @@ def _prep_for_summary(text: str) -> str:
 
 def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
     print(f"[analyst] Fetching data for {ticker}…")
-    meta = latest_filing_meta(ticker)
+    meta = latest_filing_meta(
+        ticker, allowed_forms=("10-K", "10-K/A", "20-F", "40-F")  # annual
+    )
+    if not meta:
+        meta = latest_filing_meta(
+            ticker, allowed_forms=("10-Q", "10-Q/A")  # quarterly filings
+        )
+    # --- If still nothing, render a friendly "no data" page ---
     if not meta:
         body = f"""
           <h2>Analyst Module</h2>
           <p>Could not find SEC filings for <strong>{ticker.upper()}</strong>.</p>
+          <p>Please check if the ticker is correct or if the company files outside EDGAR.</p>
         """
         # RETURN the path we wrote
         return render_page("analyst", f"Analyst Report · {ticker.upper()}", body)
@@ -76,6 +84,9 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
 
     mdna_clean = _prep_for_summary(mdna)
     risk_clean = _prep_for_summary(risk)
+
+    print(f"[debug] MDNA length: {len(mdna_clean.split())} words")
+    print(f"[debug] Risk length: {len(risk_clean.split())} words")
 
     mdna_top = (
         top_sentences_tfidf(mdna_clean, k=3) if len(mdna_clean.split()) >= 30 else []
