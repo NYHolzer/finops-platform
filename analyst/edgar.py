@@ -67,6 +67,11 @@ def build_company_submissions_url(padded_cik: str) -> str:
     return f"{SEC_BASE_URL}/submissions/CIK{padded_cik}.json"
 
 
+def build_filing_index_json_url(cik_padded: str, accession_number: str) -> str:
+    acc_nodashes = accession_number.replace("-", "")
+    return f"https://www.sec.gov/Archives/edgar/data/{int(cik_padded)}/{acc_nodashes}/index.json"
+
+
 # === Helpers: ticker→CIK (resilient) ===
 _BUILTIN_CIK_FALLBACK: Dict[str, str] = {
     "AAPL": "0000320193",
@@ -203,32 +208,75 @@ def latest_filing_meta(
     return None
 
 
+def resolve_primary_document_path(meta: FilingMeta) -> str:
+    """
+    Read the filing's index.json and pick the document whose documentType matches the form
+    (10-K / 10-Q). If not present, fall back to meta['primaryDocument'].
+    Returns the relative path (e.g., 'aapl-20240928x10q.htm').
+    """
+    cik = meta["cik"]
+    accession = meta["accessionNumber"]
+    form = (meta.get("form") or "").upper().strip()
+
+    idx_url = build_filing_index_json_url(cik, accession)
+    resp = requests.get(idx_url, headers=DEFAULT_REQUEST_HEADERS, timeout=30)
+    resp.raise_for_status()
+    idx = resp.json()
+
+    # Try to find the documentType that equals the form (e.g., "10-Q" / "10-K")
+    docs = idx.get("directory", {}).get("item", []) or []
+    # Some index.json variants use a top-level "documents" array with richer fields; handle both
+    # (EDGAR serves different shapes; this supports the simple directory listing.)
+    # If there's a 'documents' field with metadata, use it preferentially.
+    if "documents" in idx:
+        for d in idx["documents"]:
+            if (d.get("documentType") or "").upper().strip() == form:
+                # d['document'] is the filename in most index.json variants
+                return d.get("document") or d.get("name") or meta["primaryDocument"]
+
+    # Fallback: directory listing entries sometimes include 'name'
+    for d in docs:
+        name = d.get("name") or ""
+        # Heuristic: look for '10q'/'10k' in filename if exact documentType not available
+        if form == "10-Q" and "10q" in name.lower():
+            return name
+        if form == "10-K" and "10k" in name.lower():
+            return name
+
+    # Final fallback
+    return meta["primaryDocument"]
+
+
 def build_primary_document_url(
-    cik_padded: str, accession_number: str, primary_document: str
+    cik_padded: str, accession_number: str, document_name: str
 ) -> str:
     """
-    Primary document lives under:
-    https://www.sec.gov/Archives/edgar/data/{CIK_no_leading_zeroes}/{acc_no_dashes}/{primary_doc}
+    Construct the full URL to the chosen document within the filing bundle.
     """
     acc_nodashes = accession_number.replace("-", "")
-    return f"https://www.sec.gov/Archives/edgar/data/{int(cik_padded)}/{acc_nodashes}/{primary_document}"
+    return f"https://www.sec.gov/Archives/edgar/data/{int(cik_padded)}/{acc_nodashes}/{document_name}"
+
+
+DATA_DIR = Path("data") / "filings"  # ensure 'data', not 'date'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def download_latest_primary_document_html(meta: FilingMeta) -> tuple[Path, str]:
     """
-    Download and cache the latest filing's primary HTML document.
+    Resolve the correct 10-Q/10-K HTML within the filing bundle and download/cache it.
     Returns: (local_path, html_text)
     """
-    cik = meta.get("cik")
-    accession = meta.get("accessionNumber")
-    primary = meta.get("primaryDocument")
-    if not (cik and accession and primary):
-        raise ValueError(
-            "Missing keys to download primary document: need cik, accessionNumber, primaryDocument."
-        )
+    cik = meta["cik"]
+    accession = meta["accessionNumber"]
 
-    url = build_primary_document_url(cik, accession, primary)
-    fname = f"{meta.get('ticker', 'unknown')}_{meta.get('form','')}_{accession.replace('-', '')}_{primary}".lower()
+    # Resolve the best document name first
+    resolved_doc = resolve_primary_document_path(meta)
+    url = build_primary_document_url(cik, accession, resolved_doc)
+
+    print(f"[edgar] Fetching primary document: {url}")
+
+    # Cache filename includes the resolved doc name for traceability
+    fname = f"{meta['ticker']}_{meta['form']}_{accession.replace('-', '')}_{resolved_doc}".lower()
     local_path = DATA_DIR / fname
 
     if local_path.exists():

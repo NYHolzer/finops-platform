@@ -75,6 +75,7 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
     # Download & cache the primary document HTML
     print(f"[analyst] Downloading primary document…")
     local_path, html = download_latest_primary_document_html(meta)
+    parsed_file = local_path.name
     print(f"[analyst] Extracting sections…")
     sections = extract_section_texts(html)
 
@@ -157,6 +158,9 @@ def render_report(ticker: str = DEFAULT_TICKER) -> Path | None:
         <summary>Local cache</summary>
         <p>Saved primary document: <code>{local_path.as_posix()}</code></p>
       </details>
+      <p style="margin-top:0.5rem;color:#666;">
+        Parsed: <code>{parsed_file}</code>
+      </p>
     """
 
     # IMPORTANT: RETURN the path that render_page writes
